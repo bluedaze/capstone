@@ -1,40 +1,15 @@
-import re
-import spacy
-from spacy.tokenizer import Tokenizer
-
-nlp = spacy.load("en_core_web_lg")
 callStack = []
-reservedWords = ["def", "class", "if", "elif", "else", "while", "try", "except", "for", "import"]
-
-def custom_tokenizer():
-    custom_infixes = ['[\[\(]', '[.]']
-    infix_re = spacy.util.compile_infix_regex(tuple(list(nlp.Defaults.infixes) + custom_infixes))
-    prefix_re = re.compile(r'''^[\[\(]''')
-    suffix_re = re.compile(r'''[\]\)]''')
-    return Tokenizer(nlp.vocab, prefix_search=prefix_re.search, suffix_search=suffix_re.search, infix_finditer=infix_re.finditer)
-
-
-nlp.tokenizer = custom_tokenizer()
-suffixes = nlp.Defaults.suffixes + [r''',''']
-suffix_regex = spacy.util.compile_suffix_regex(suffixes)
-nlp.tokenizer.suffix_search = suffix_regex.search
-suffixes = list(nlp.Defaults.suffixes)
-suffixes.remove(r'"')
-suffix_regex = spacy.util.compile_suffix_regex(suffixes)
-nlp.tokenizer.suffix_search = suffix_regex.search
-
+reservedWords = ["def", 'class', "if", "elif", "else", "while", "try", "except", "for", "import"]
+quotations = ["'", '"']
 indentCallStack = {}
-
 
 class ast(object):
     def __init__(self):
         self.scope = None
         self.root = None
 
-
 ast = ast()
 variables = []
-
 
 class Token(object):
     def __init__(self, tokenType=None, value=None):
@@ -63,10 +38,10 @@ class Scanner(object):
         self.token = None
         self.reservedToken = ""
         self.conditionals = ["if", "elif", "else", "while", "try", "except", "for"]
-        self.reservedWords = ["def", "class", "if", "elif", "else", "while", "try", "except", "for", "import"]
+        self.reservedWords = ["def", "class", "import"]
         self.objects = ["def", "class"]
-        self.closingBrackets = [")", "]"]
-        self.brackets = ["(", "["]
+        self.closingBrackets = ["}", "]"]
+        self.brackets = ["{", "["]
         self.quotations = ["'", '"']
 
     def checkAssignmentOperator(self):
@@ -79,38 +54,58 @@ class Scanner(object):
         sides = line.split("=")
         x = 1
 
-    def advance(self):
-        self.pos += 1
-        if self.pos < len(self.text):
-            self.current_word = self.text[self.pos]
-
     def peek(self):
-        next_word = self.text[self.pos + 1]
-        return next_word
+        if self.pos < len(self.text) - 1:
+            nextword = self.text[self.pos + 1]
+            return nextword
 
     def parse_token(self):
-        text = self.text
-        if self.current_word in reservedWords:
-            next_word = text[self.pos + 1]
-            self.token = Token(self.current_word, next_word)
-            variables.append(next_word)
-            self.advance()
         if self.current_word[0] in self.quotations:
             self.createString()
+        elif self.current_word in self.reservedWords:
+            self.createObjectToken()
         elif self.current_word in self.brackets:
             self.mapBrackets()
         elif self.current_word == "=":
             self.checkAssignmentOperator()
         elif self.current_word in self.conditionals:
             self.createExpressionToken()
-        elif self.current_word in self.closingBrackets:
-            self.token = Token(self.current_word)
-            return self.token, self.pos
-        return self.token, self.pos
+        elif self.current_word[0] in self.closingBrackets:
+            return self.current_word[0]
+        return self.token
+
+
+    def createObjectToken(self):
+        text = self.text
+        self.peek()
+        token = Token(self.current_word, self.peek())
+        self.advance()
+        peek = self.peek()
+        if peek == '(':
+            self.advance()
+            while self.current_word != ":":
+                self.advance()
+                current_word = self.current_word
+                if self.current_word == ",":
+                    pass
+                elif self.current_word == ")":
+                    self.token = token
+                elif self.current_word != ":":
+                    token.args.append(self.current_word)
+        else:
+            self.token = token
+        self.advance()
 
     def createString(self):
+        current_word = self.current_word
+        text = self.text
+        if current_word[0] in self.quotations and current_word[-1] in self.quotations:
+            x = 1
+        string = "".join(text)
+        splitString = string.split(",")
         string = []
-        while self.current_word[-1] not in self.quotations:
+        lastCharacter = self.current_word[-1]
+        while lastCharacter not in self.quotations:
             string.append(self.current_word)
             self.advance()
         string.append(self.current_word)
@@ -123,33 +118,29 @@ class Scanner(object):
         while self.pos < self.text_length - 1:
             self.pos += 1
             current_word = self.text[self.pos]
-            self.token.args.append(current_word)
+            if self.token:
+                self.token.args.append(current_word)
 
     def mapBrackets(self):
         current_token = self.current_word
-        current_word = ""
         args = []
-        while current_word not in self.closingBrackets:
-            self.pos += 1
-            text = self.text[self.pos::]
+        self.token = Token("bracket", current_token)
+        while self.current_word not in self.closingBrackets:
+            text = self.text[self.pos + 1::]
             tokenizer = Scanner(text)
-            tokenizer.reservedToken = current_token
             token = tokenizer.parse_token()
-            current_word = token[0].type
-            newToken = token[0]
-            if current_word not in self.closingBrackets:
-                args.append(newToken)
-            self.pos = token[1]
-            self.token = newToken
-        self.token = Token(current_token, "bracket")
-        self.token.args = args
-
-class Lexer(object):
-    def __init__(self, text, file=None):
-        self.file = file
-        self.pos = 0
-        self.text = text
-        self.token = None
+            nextWord = self.peek()
+            if (self.current_word in self.brackets) and (nextWord in self.closingBrackets):
+                self.token = Token("bracket", "empty")
+            elif token in self.closingBrackets:
+                break
+            elif token:
+                args.append(token)
+            self.pos += 1
+            self.current_word = self.text[self.pos]
+            self.token.args = args
+        self.advance()
+        x = 1
 
     def checkIndentation(self):
         # Some of the dumbest code I've ever written.
@@ -178,24 +169,25 @@ class Lexer(object):
 
     def advance(self):
         self.pos += 1
-        if self.pos < len(self.text) - 1:
+        if self.pos < len(self.text):
             self.current_word = self.text[self.pos]
 
     def expr(self):
+        text = self.text
         while self.pos < len(self.text):
             self.current_word = self.text[self.pos]
-            tokenizer = Scanner(self.text)
-            token = tokenizer.parse_token()
-            if token[1] != self.pos:
-                self.pos = token[1]
-            self.token = token[0]
+            self.parse_token()
             if self.token:
                 self.checkIndentation()
             self.advance()
+        x = 1
 
 class mainLoop:
 
     def __init__(self, filelocation):
+        self.quotations = ["'", '"']
+        self.tokens = []
+        self.pos = 0
         self.createMain()
         self.main(filelocation)
 
@@ -208,7 +200,23 @@ class mainLoop:
         ast.root = self.mainToken
         ast.scope = self.mainToken
         self.scope = self.mainToken
+        self.char = ""
         callStack.append(self.mainToken)
+
+    def peek(self):
+        if self.pos + 1 >= len(self.file):
+            return '\0'
+        return self.file[self.pos+1]
+
+    def lookback(self):
+        return self.tokens[-1]
+
+    def nextChar(self):
+        self.pos += 1
+        if self.pos >= len(self.file):
+            self.char = '\0'
+        else:
+            self.char = self.file[self.pos]
 
     def main(self, filelocation):
         self.loopThroughFile(filelocation)
@@ -217,33 +225,136 @@ class mainLoop:
         lines = open(filelocation, 'r')
         file = self.cleanFile(lines)
         self.file = file
-        for count, line in enumerate(file):
-            tokens = self.tokenizeLine(count, line)
-            lexer = Lexer(tokens, file)
-            lexer.expr()
+        tokens = self.tokenizeLine(file)
+        for token in self.tokens:
+            scanner = Scanner(tokens, file)
+            scanner.expr()
         while True:
             x = 1
 
     def cleanFile(self, lines):
-        lines = self.stripComments(lines, "#")
         lines = self.stripNewline(lines)
-        strings = []
-        for line in lines:
-            line = self.stripNewlineCharacter(line)
-            strings.append(line)
         self.findFirstLine(lines)
-        file = []
-        for sentence in strings:
-            file.append(sentence)
-        return strings
+        source = "".join(lines)
+        return source
 
-    def tokenizeLine(self, count, line):
-        string = nlp(line)
-        tokens = []
-        for token in string:
-            token = token.text
-            tokens.append(token)
-        return tokens
+    def createToken(self):
+        tokens = self.tokens
+        brackets = ["[", "(", "{", "}", "]", ")"]
+        if self.char == '#':
+            self.skipComment()
+        elif self.char == "_":
+            self.dunders()
+        elif self.char == "\n":
+            tokens.append(self.char)
+        elif self.char in self.quotations:
+            self.createString()
+        elif self.char.isalnum():
+            self.createWord()
+        elif self.char.isspace():
+            self.spaceHandler()
+        elif self.char == "=":
+            self.equation()
+        elif self.char in brackets:
+            self.mapFuncCall()
+        elif self.char == ":":
+            self.tokens.append(self.char)
+
+    def tokenizeLine(self, file):
+        self.char = self.file[self.pos]
+        while self.pos < len(self.file):
+            self.createToken()
+            self.nextChar()
+        x = 1
+
+    def dunders(self):
+        startPos = self.pos
+
+        while True:
+            self.nextChar()
+            if self.char.isspace():
+                break
+            if self.char == "(":
+                break
+
+        dunder = self.file[startPos: self.pos]
+        self.tokens.append(dunder)
+
+    def mapFuncCall(self):
+        brackets = {"[": "]", "(":")", "{": "}"}
+        try:
+            closing_bracket = brackets[self.char]
+            self.tokens.append(self.char)
+            while self.char != closing_bracket:
+                self.nextChar()
+                char = self.char
+                if self.char == "\n":
+                    self.char = ""
+                    self.tokens.append(self.char)
+                elif self.char.isspace():
+                    self.skipSpaces()
+                self.createToken()
+        except KeyError:
+            self.tokens.append(self.char)
+
+    def skipSpaces(self):
+        while self.peek().isspace():
+            self.nextChar()
+
+    def equation(self):
+        self.tokens.append(self.char)
+        return self.char
+
+    def spaceHandler(self):
+        spaces = []
+        spaces.append(self.char)
+        while self.peek().isspace():
+            self.nextChar()
+            spaces.append(self.char)
+        space = " ".join(spaces)
+        spaceLength = len(space)
+        if spaceLength > 2:
+            self.tokens.append(space)
+        return space
+
+    def createWord(self):
+        startPos = self.pos
+        while self.peek().isalnum():
+            self.nextChar()
+            if self.peek() == ".":
+                self.nextChar()
+            if self.peek() == "_":
+                self.nextChar()
+
+        tokenText = self.file[startPos : self.pos + 1]
+        self.tokens.append(tokenText)
+        return tokenText
+
+    def skipComment(self):
+        while self.char != '\n':
+            self.nextChar()
+        return self.char
+
+    def createString(self):
+        tripleQuote = self.file[self.pos:self.pos+3]
+        quoteChar = self.char
+        self.nextChar()
+        if tripleQuote == "'''":
+            startPos = self.pos
+            nextTree = self.file[self.pos:self.pos + 3]
+            while nextTree != tripleQuote:
+                nextTree = self.file[self.pos:self.pos+3]
+                self.nextChar()
+            string = self.file[startPos+2: self.pos-1]
+            for i in range(2):
+                self.nextChar()
+        else:
+            startPos = self.pos
+            while self.char != quoteChar:
+                self.nextChar()
+            string = self.file[startPos-1: self.pos+1]
+            string = string.replace("'", '"')
+        self.tokens.append(string)
 
     def findFirstLine(self, lines):
         for i in lines:
@@ -253,22 +364,8 @@ class mainLoop:
             elif leadingSpaces > 1:
                 raise Exception("Program starts without proper indentation")
 
-    def stripComments(self, linesToMap, symbol):
-        lines = []
-        for i in linesToMap:
-            if symbol not in i:
-                lines.append(i)
-        # symbols = [i for i in linesToMap if symbol not in i]
-        return lines
-
     def stripNewline(self, linesToMap):
         symbols = [i for i in linesToMap if i != "\n"]
         return symbols
-
-    def stripNewlineCharacter(self, line):
-        symbols = [i for i in line if i != "\n"]
-        line = "".join(symbols)
-        return line
-
 
 fileObj = mainLoop("pyParser.py")
