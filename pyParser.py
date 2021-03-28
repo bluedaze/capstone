@@ -1,7 +1,11 @@
+import re
+
 callStack = []
 reservedWords = ["def", 'class', "if", "elif", "else", "while", "try", "except", "for", "import"]
 quotations = ["'", '"']
 indentCallStack = {}
+
+
 
 class ast(object):
     def __init__(self):
@@ -29,40 +33,61 @@ class Token(object):
 
 class Scanner(object):
     def __init__(self, text, file=None, count=None):
-        self.count = count
+        self.usedwords = []
         self.file = file
         self.text = text
         self.pos = 0
         self.current_word = self.text[self.pos]
         self.text_length = len(self.text)
         self.token = None
-        self.reservedToken = ""
         self.conditionals = ["if", "elif", "else", "while", "try", "except", "for"]
         self.reservedWords = ["def", "class", "import"]
         self.objects = ["def", "class"]
         self.closingBrackets = ["}", "]"]
         self.brackets = ["{", "["]
         self.quotations = ["'", '"']
+        self.indents = [0]
 
     def checkAssignmentOperator(self):
-        token = self.token
-        text = self.text
-        eq = text.index("=")
-        left = text[eq - 1]
-        right = text[eq + 1]
-        line = "".join(text)
-        sides = line.split("=")
-        x = 1
+        self.advance()
+        if self.current_word in self.brackets:
+            assignment = self.mapBrackets()
+            return assignment
+
+    def createToken(self, tokenType, name):
+        self.getIndent()
+        token = Token(tokenType, name)
+        return token
+
+    def createIdentifiers(self):
+        firstToken = self.current_word
+        pos = self.pos
+        peek = self.peek()
+        while peek != "\n":
+            if peek == "=":
+                # Token creation is broken here
+                self.advance()
+                assignment = self.checkAssignmentOperator()
+                self.token = Token("Assignment", firstToken)
+                self.token.members.append(assignment)
+            else:
+                self.advance()
+            peek = self.peek()
+        self.advance()
 
     def peek(self):
         if self.pos < len(self.text) - 1:
             nextword = self.text[self.pos + 1]
             return nextword
 
+    def spaceHandler(self):
+        while self.current_word.isspace():
+            self.advance()
+
     def parse_token(self):
-        if self.current_word[0] in self.quotations:
-            self.createString()
-        elif self.current_word in self.reservedWords:
+        if self.current_word.isspace():
+            self.spaceHandler()
+        if self.current_word in self.reservedWords:
             self.createObjectToken()
         elif self.current_word in self.brackets:
             self.mapBrackets()
@@ -72,20 +97,22 @@ class Scanner(object):
             self.createExpressionToken()
         elif self.current_word[0] in self.closingBrackets:
             return self.current_word[0]
-        return self.token
+        elif self.current_word.isalnum():
+            self.createIdentifiers()
+        else:
+            self.advance()
 
 
     def createObjectToken(self):
-        text = self.text
-        self.peek()
         token = Token(self.current_word, self.peek())
+        self.token = token
+        self.getIndent()
         self.advance()
         peek = self.peek()
         if peek == '(':
             self.advance()
             while self.current_word != ":":
                 self.advance()
-                current_word = self.current_word
                 if self.current_word == ",":
                     pass
                 elif self.current_word == ")":
@@ -96,56 +123,41 @@ class Scanner(object):
             self.token = token
         self.advance()
 
-    def createString(self):
-        current_word = self.current_word
-        text = self.text
-        if current_word[0] in self.quotations and current_word[-1] in self.quotations:
-            x = 1
-        string = "".join(text)
-        splitString = string.split(",")
-        string = []
-        lastCharacter = self.current_word[-1]
-        while lastCharacter not in self.quotations:
-            string.append(self.current_word)
-            self.advance()
-        string.append(self.current_word)
-        self.advance()
-        string = " ".join(string)
-        self.token = Token("string", string)
-
     def createExpressionToken(self):
         self.advance()
         while self.pos < self.text_length - 1:
-            self.pos += 1
+            self.advance()
             current_word = self.text[self.pos]
             if self.token:
                 self.token.args.append(current_word)
 
+    def isString(self):
+        if self.current_word.startswith('"') and self.current_word.endswith('"'):
+            return True
+        else:
+            return False
+
     def mapBrackets(self):
-        current_token = self.current_word
         args = []
-        self.token = Token("bracket", current_token)
         while self.current_word not in self.closingBrackets:
-            text = self.text[self.pos + 1::]
-            tokenizer = Scanner(text)
-            token = tokenizer.parse_token()
             nextWord = self.peek()
             if (self.current_word in self.brackets) and (nextWord in self.closingBrackets):
-                self.token = Token("bracket", "empty")
-            elif token in self.closingBrackets:
+                self.advance()
+                token = self.createToken(self.current_word, nextWord)
+                return token
+            elif nextWord in self.closingBrackets:
+                args.append(nextWord)
                 break
-            elif token:
-                args.append(token)
-            self.pos += 1
-            self.current_word = self.text[self.pos]
-            self.token.args = args
-        self.advance()
-        x = 1
+            else:
+                self.advance()
+                args.append(self.current_word)
+            self.advance()
+        return args
 
     def checkIndentation(self):
         # Some of the dumbest code I've ever written.
         token = self.token
-        token.indent = self.getIndent(self.text)
+        # Token creation is broken in createIdentifiers
         if token.indent < ast.scope.indent:
             while ast.scope.indent > token.indent:
                 ast.scope = ast.scope.parent
@@ -160,48 +172,38 @@ class Scanner(object):
             ast.scope.members.append(token)
         ast.scope = token
 
-    def getIndent(self, line):
-        line = "".join(line)
-        indent = len(line) - len(line.lstrip())
-        if indent == 0:
+    def getIndent(self):
+        line = self.text[self.pos-1]
+        if self.pos > 0 and len(line) > 1:
+            self.token.indent = len(line)
+        else:
+            self.token.indent = 0
+        if self.token.indent == 0:
             ast.scope = ast.root
-        return indent
 
     def advance(self):
         self.pos += 1
         if self.pos < len(self.text):
             self.current_word = self.text[self.pos]
+        self.usedwords.append(self.current_word)
+        return self.current_word
 
     def expr(self):
-        text = self.text
+        self.current_word = self.text[self.pos]
+        self.usedwords.append(self.current_word)
         while self.pos < len(self.text):
-            self.current_word = self.text[self.pos]
+            current_word = self.current_word
             self.parse_token()
+            current_token = self.token
             if self.token:
                 self.checkIndentation()
-            self.advance()
-        x = 1
+            x = 1
 
 class mainLoop:
 
     def __init__(self, filelocation):
-        self.quotations = ["'", '"']
         self.tokens = []
-        self.pos = 0
-        self.createMain()
         self.main(filelocation)
-
-    def createMain(self):
-        self.mainToken = Token()
-        self.mainToken.name = "__main__"
-        self.mainToken.indent = 0
-        self.mainToken.type = "__main__"
-        self.mainToken.parent = self.mainToken
-        ast.root = self.mainToken
-        ast.scope = self.mainToken
-        self.scope = self.mainToken
-        self.char = ""
-        callStack.append(self.mainToken)
 
     def peek(self):
         if self.pos + 1 >= len(self.file):
@@ -213,30 +215,20 @@ class mainLoop:
 
     def nextChar(self):
         self.pos += 1
-        if self.pos >= len(self.file):
-            self.char = '\0'
-        else:
+        if self.pos < len(self.file):
             self.char = self.file[self.pos]
 
     def main(self, filelocation):
         self.loopThroughFile(filelocation)
 
     def loopThroughFile(self, filelocation):
+        self.char = ""
+        self.quotations = ["'", '"']
+        self.pos = 0
         lines = open(filelocation, 'r')
         file = self.cleanFile(lines)
         self.file = file
-        tokens = self.tokenizeLine(file)
-        for token in self.tokens:
-            scanner = Scanner(tokens, file)
-            scanner.expr()
-        while True:
-            x = 1
-
-    def cleanFile(self, lines):
-        lines = self.stripNewline(lines)
-        self.findFirstLine(lines)
-        source = "".join(lines)
-        return source
+        self.createTokens(file)
 
     def createToken(self):
         tokens = self.tokens
@@ -259,13 +251,16 @@ class mainLoop:
             self.mapFuncCall()
         elif self.char == ":":
             self.tokens.append(self.char)
+        elif self.char == ",":
+            self.tokens.append(self.char)
+        elif self.char == ".":
+            self.tokens.append(self.char)
 
-    def tokenizeLine(self, file):
+    def createTokens(self, file):
         self.char = self.file[self.pos]
         while self.pos < len(self.file):
             self.createToken()
             self.nextChar()
-        x = 1
 
     def dunders(self):
         startPos = self.pos
@@ -286,15 +281,19 @@ class mainLoop:
             closing_bracket = brackets[self.char]
             self.tokens.append(self.char)
             while self.char != closing_bracket:
+                # We recurse until the bracket closes
+                # We remove any newline characters found in brackets
                 self.nextChar()
-                char = self.char
                 if self.char == "\n":
                     self.char = ""
                     self.tokens.append(self.char)
                 elif self.char.isspace():
+                    # Removing unnecessary indents after newline characters.
                     self.skipSpaces()
                 self.createToken()
         except KeyError:
+            # We append the closing bracket to the stack
+            # Then we exit the function
             self.tokens.append(self.char)
 
     def skipSpaces(self):
@@ -336,6 +335,7 @@ class mainLoop:
         return self.char
 
     def createString(self):
+        # I need to fix this nonsense
         tripleQuote = self.file[self.pos:self.pos+3]
         quoteChar = self.char
         self.nextChar()
@@ -364,8 +364,32 @@ class mainLoop:
             elif leadingSpaces > 1:
                 raise Exception("Program starts without proper indentation")
 
+    def cleanFile(self, lines):
+        source = []
+        for line in lines:
+            source.append(line)
+        lines = self.stripNewline(source)
+        self.findFirstLine(lines)
+        source = "".join(lines)
+        return source
+
     def stripNewline(self, linesToMap):
         symbols = [i for i in linesToMap if i != "\n"]
         return symbols
 
+
+def createMain():
+    mainToken = Token()
+    mainToken.name = "__main__"
+    mainToken.indent = 0
+    mainToken.type = "__main__"
+    mainToken.parent = mainToken
+    ast.root = mainToken
+    ast.scope = mainToken
+    callStack.append(mainToken)
+
+createMain()
 fileObj = mainLoop("pyParser.py")
+scanner = Scanner(fileObj.tokens, fileObj.file)
+result = scanner.expr()
+x = 1
