@@ -1,14 +1,3 @@
-
-
-class buttClass():
-    def __init__(self):
-        self.thing = None
-        butts = 10
-        self.butts = 12
-
-butts = buttClass()
-
-
 callStack = []
 reservedWords = ["def", 'class', "if", "elif", "else", "while", "try", "except", "for", "import"]
 quotations = ["'", '"']
