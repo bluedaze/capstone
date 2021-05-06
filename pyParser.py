@@ -6,20 +6,23 @@ indentCallStack = {}
 class ast(object):
     def __init__(self):
         self.scope = None
+        self.scope = None
         self.root = None
 
 ast = ast()
+x = ast
 
 class Token(object):
     def __init__(self, tokenType=None, name=None):
         self.variables = []
         self.type = tokenType
         self.name = name
-        self.args = []
+        self.args = {}
         self.members = []
         self.references = {}
         self.parent = None
         self.indent = None
+        self.returnValue = None
 
     def __str__(self):
         return 'Token({type}, {value})'.format(type=self.type, value=repr(self.name))
@@ -32,54 +35,35 @@ class Scanner(object):
         self.usedwords = []
         self.file = file
         self.text = text
+        self.pax = 100 + 100
         self.pos = 0
         self.current_word = self.text[self.pos]
         self.text_length = len(self.text)
         self.token = None
         self.conditionals = ["if", "elif", "else", "while", "try", "except", "for"]
-        self.reservedWords = ["def", "class", "import"]
+        self.reservedWords = ["def", "class"]
         self.objects = ["def", "class"]
         self.closingBrackets = ["}", "]", ")"]
         self.brackets = ["{", "[", "("]
         self.quotations = ["'", '"']
         self.indents = [0]
 
-    def checkIndentation(self, token):
-        # Some of the dumbest code I've ever written.
-        if token.indent < ast.scope.indent:
-            while ast.scope.indent > token.indent:
-                ast.scope = ast.scope.parent
-            token.parent = ast.scope.parent
-            token.parent.members.append(token)
-        elif token.indent > ast.scope.indent:
-            token.parent = ast.scope
-            ast.scope.members.append(token)
-        elif token.indent == ast.scope.indent:
-            ast.scope = ast.scope.parent
-            token.parent = ast.scope
-            ast.scope.members.append(token)
+    def noneToken(self):
+        token = Token()
         return token
 
-    def createToken(self, tokenType=None, name=None):
-        token = Token(tokenType, name)
-        self.getIndent(token)
+    def referenceCall(self, reference):
+        token = Token("$functionCall", reference.name)
+        token.members.append(reference)
         return token
-
-    def getIndent(self, token):
-        line = self.text[self.pos]
-        if line.isspace():
-            token.indent = len(line)
-            self.advance()
-        else:
-            token.indent = 0
-            ast.scope = ast.root
-        self.checkIndentation(token)
 
     def advance(self):
         self.pos += 1
         if self.pos < len(self.text):
             self.current_word = self.text[self.pos]
         self.usedwords.append(self.current_word)
+        current_word = self.current_word
+        print(self.current_word)
         return self.current_word
 
     def peek(self):
@@ -89,111 +73,186 @@ class Scanner(object):
 
     def createNode(self, token, assignment, tokenName, tokenType):
         ast.scope.references[tokenName] = assignment
+        token.name = tokenName
         token.type = tokenType
         ast.scope = token
         token.members = assignment
         self.token = token
 
-    def dotAccessor(self, token):
+    def dotAccessor(self, token, variable):
         astScope = ast.scope
-        firstArg = astScope.references.get(self.current_word)
-        self.advance()
-        if self.current_word == "." and firstArg.type == "class":
+        firstArg = astScope.references.get(variable)
+        if firstArg.type == "class":
+            variable = self.current_word
+            Class = firstArg
             self.advance()
-            arg = firstArg.references.get(self.current_word)
-            if arg is None and self.peek() == "=":
-                variableName = self.current_word
-                assignment = self.equalityOperator(token)
-                ast.scope = ast.scope.parent
-                self.createNode(token, assignment, variableName, "Assignment")
-                ast.scope = astScope
+            arg = Class.references.get(variable)
+            if arg is None and self.current_word == "=":
                 self.advance()
-                x = 1
+                assignment = self.equalityOperator(token)
+                token.type = "Assignment"
+                token.name = variable
+                ast.scope = ast.scope.parent
+                ast.scope.references[variable] = assignment
+                ast.scope = astScope
+            elif arg:
+                self.advance()
+                assignment = self.equalityOperator(token)
+                token.type = "Assignment"
+                token.name = variable
+                ast.scope = ast.scope.parent
+                ast.scope.references[variable] = assignment
+                ast.scope = astScope
+
+    def removeMember(self, token):
+        for member in ast.scope.members:
+            if member.name == token.name:
+                ast.scope.members.remove(member)
+                break
+
+    def doMath(self):
+        while self.current_word.isnumeric():
+            self.advance()
 
     def equalityOperator(self, token):
-        variableName = self.current_word
-        token.name = variableName
-        self.advance()
-        peek = self.peek()
-        if peek in self.brackets:
+        if self.current_word in self.brackets:
             assignment = self.mapBrackets(token)
-            return assignment
-        elif peek == "None":
             self.advance()
-            assignment = None
             return assignment
-        elif peek.isnumeric():
+        elif self.current_word == "None":
             self.advance()
-            assignment = self.createTerminator("Math")
+            assignment = self.noneToken()
+            return assignment
+        elif self.current_word.isnumeric():
+            assignment = self.doMath()
             token.type = "Assignment"
             token.name = variableName
             token.members.append(assignment)
             ast.scope.references[token.name] = token
             self.token = token
-        elif peek in ast.scope.references:
+        elif self.current_word in ast.scope.references:
+            variable = self.current_word
+            reference = self.fetchMember(self.current_word)
             self.advance()
-            reference = self.fetchReference(self.current_word)
-            if self.advance() == "(" and self.peek() == ")":
-                self.advance()
+            if reference and self.current_word == "$functionCall":
+                token.references[variable] = reference
                 self.advance()
                 return reference
+            elif reference and self.current_word != "$functionCall":
+                assignment = self.referenceCall(reference)
+                token.references[variable] = reference
+                token.members.append(assignment)
+            elif self.peek() == "$functionCall":
+                self.advance()
+                return reference
+            elif self.peek() == "\n":
+                return "$functionCall"
             else:
-                newToken = Token("FunctionReference", "ast")
-                self.token = newToken
+                self.advance()
+                return reference
 
-
-    def createTerminator(self, token_type, token):
+    def createTerminator(self, token_type):
         assignment = Token(token_type, self.current_word)
         self.advance()
         return assignment
 
-    def fetchReference(self, variableName):
-        for reference in ast.scope.references:
-            if variableName == reference:
-                return ast.scope.references[reference]
+    def fetchMember(self, variableName):
+        scope = ast.scope
+        reference = ast.scope.references.get(variableName)
+        while not reference and scope.name != "__main__":
+            scope = scope.parent
+            reference = ast.scope.references.get(variableName)
+            if reference:
+                return reference
+        return reference
 
-    def parse_token(self):
+
+    def returnHandler(self, token):
+        returnValue = []
+        self.advance()
+        while self.current_word != "\n":
+            returnValue.append(self.current_word)
+            self.advance()
+        token.name = "Return"
+        token.type = "Return"
+
+    def createIdentifier(self, token):
         variableName = self.current_word
-        token = self.createToken()
-        peek = self.peek()
-        if self.current_word in self.reservedWords:
-            self.createObjectToken(token)
-        elif self.current_word in self.brackets:
-            self.mapBrackets(token)
-        elif peek == ".":
-            self.dotAccessor(token)
-        elif peek == "=":
+        self.advance()
+        if self.current_word == "=":
+            self.advance()
             assignment = self.equalityOperator(token)
             self.createNode(token, assignment, variableName, "Assignment")
+        if self.current_word == ".":
+            self.advance()
+            self.dotAccessor(token, variableName)
+
+    def parse_token(self, token):
+        current_word = self.current_word
+        peek = self.peek()
+        if self.current_word in self.reservedWords:
+            self.createScope(token)
+        elif self.current_word == "return":
+            self.returnHandler(token)
+        elif self.current_word in self.brackets:
+            self.mapBrackets(token)
+        elif self.current_word.isalnum():
+            self.createIdentifier(token)
         elif self.current_word in self.conditionals:
             self.createExpressionToken()
         else:
             self.advance()
 
-    def createObjectToken(self, token):
-        variableType = self.current_word
-        variableName = self.advance()
-        while self.current_word != ":":
+    def createClass(self, token):
+        if self.advance() == "(":
+            while self.current_word != "\n":
+                self.advance()
+                if self.current_word == "object":
+                    token.args[self.current_word] = token
+                elif self.current_word.isalnum():
+                    self.createArgument(token)
+
+    def createArgument(self, token):
+        variableName = self.current_word
+        self.advance()
+        if self.current_word == "=":
+            self.advance()
+            assignment = self.equalityOperator(token)
+            token.references[variableName] = assignment
+        else:
+            token.references[variableName] = self.noneToken()
+
+    def createScope(self, token):
+        token.type = self.current_word
+        token.name = self.advance()
+        if token.type == "def":
+            if self.advance() == "(":
+                self.createFunction(token)
+            else:
+                raise Exception("Invalid syntax. You are missing a parenthesis.")
+        elif token.type == "class":
+            self.createClass(token)
+        ast.scope.references[token.name] = token
+        ast.scope = token
+
+    def createFunction(self, token):
             self.advance()
             current_word = self.current_word
-            if self.current_word == "(" and variableType == "class" and self.peek() == "object":
-                self.advance()
-                token.references[self.current_word] = token
-            elif self.current_word == ")":
-                self.advance()
-            elif self.current_word == ",":
-                pass
-            elif variableType == "def" and ast.scope.type == "class" and len(token.references) < 1:
-                token.references[self.current_word] = token.parent
-            elif self.current_word.isalnum():
-                token.references[self.current_word] = None
-                x = 1
-        ast.scope.references[variableName] = token
-        token.type = variableType
-        token.name = variableName
-        ast.scope = token
-        self.token = token
-        self.advance()
+            peek = self.peek()
+            x = 1
+            while self.current_word != ":":
+                if ast.scope.type == "class" and len(token.references) < 1:
+                    token.references[self.current_word] = token.parent
+                    self.advance()
+                elif self.current_word.isalnum():
+                    self.createArgument(token)
+                if self.current_word == ")" or self.current_word == ",":
+                    self.advance()
+                else:
+                    raise Exception("You are missing a comma.")
+                if self.peek() == "\n" and self.current_word != ":":
+                    raise Exception("A function declaration needs a colon at the end.")
+            self.advance()
 
     def createExpressionToken(self):
         self.advance()
@@ -206,20 +265,56 @@ class Scanner(object):
     def mapBrackets(self, token):
         args = []
         while self.current_word not in self.closingBrackets:
-            self.advance()
             if self.current_word.isalnum() or self.current_word.startswith('"'):
                 args.append(self.current_word)
-        self.advance()
-        token.members = args
+            self.advance()
         return args
 
     def loop(self):
         self.current_word = self.text[self.pos]
         self.usedwords.append(self.current_word)
         while self.pos < len(self.text):
-            current_word = self.current_word
-            self.parse_token()
-            self.advance()
+            token = self.createToken()
+            self.parse_token(token)
+            if self.current_word == "\n":
+                self.advance()
+            else:
+                raise Exception("The parser could not find a new line character.")
+
+    def createToken(self, tokenType=None, name=None):
+        token = Token(tokenType, name)
+        self.getIndent(token)
+        return token
+
+    def getIndent(self, token):
+        if self.current_word.isspace():
+            self.createIndent(token)
+        else:
+            self.returnToRoot(token)
+        self.checkIndentation(token)
+
+    def createIndent(self, token):
+        token.indent = len(self.current_word)
+        self.advance()
+
+    def returnToRoot(self, token):
+        token.indent = 0
+        ast.scope = ast.root
+
+    def checkIndentation(self, token):
+        if token.indent < ast.scope.indent:
+            self.createDedent(token)
+        elif token.indent > ast.scope.indent:
+            token.parent = ast.scope
+        elif token.indent == ast.scope.indent:
+            ast.scope = ast.scope.parent
+            token.parent = ast.scope
+        return token
+
+    def createDedent(self, token):
+        while ast.scope.indent > token.indent:
+            ast.scope = ast.scope.parent
+        token.parent = ast.scope.parent
 
 class mainLoop:
 
@@ -288,20 +383,26 @@ class mainLoop:
         startPos = self.pos
 
         while True:
-            self.nextChar()
             if self.char.isspace():
                 break
-            if self.char == "(":
+            if self.peek() == "(":
                 break
+            self.nextChar()
 
-        dunder = self.file[startPos: self.pos]
+        dunder = self.file[startPos: self.pos+1]
         self.tokens.append(dunder)
 
     def mapFuncCall(self):
         brackets = {"[": "]", "(":")", "{": "}"}
         try:
             closing_bracket = brackets[self.char]
-            self.tokens.append(self.char)
+            if self.char == "(" and self.peek() == closing_bracket:
+                previousWord = self.tokens[-1]
+                if previousWord.isalnum():
+                    self.nextChar()
+                    self.tokens.append("$functionCall")
+            else:
+                self.tokens.append(self.char)
             while self.char != closing_bracket:
                 # We recurse until the bracket closes
                 # We remove any newline characters found in brackets
@@ -408,7 +509,6 @@ def createMain():
     mainToken.parent = mainToken
     ast.root = mainToken
     ast.scope = mainToken
-    callStack.append(mainToken)
 
 createMain()
 fileObj = mainLoop("pyParser.py")
