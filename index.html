@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -16,7 +15,7 @@
   <div class="row"  style="padding-top: 10px;">
     <div class="col-md-8">
         <form onsubmit="return sendMessage()">
-          <textarea style = "resize: none; width: 100%" rows="35" id="message"></textarea>
+          <textarea style = "resize: none; width: 100%" rows="35" id="message" spellcheck="false"></textarea>
     </div>
     <div class="col-md-4">
         <img id = "graphimg" src="{{ static_url('round-table.gv.webp') }}" />
@@ -48,6 +47,11 @@
     newImage.src = evt.data;
     document.getElementById("graphimg").src=newImage.src;
     };
+
+
+<!--    setInterval(function(){-->
+<!--        sendMessage()}, 3000)-->
+
     </script>
 </body>
 </html>

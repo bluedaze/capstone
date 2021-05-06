@@ -3,7 +3,7 @@ import tornado.web
 import tornado.websocket
 import tornado.escape
 import json
-import astap
+import pyastthing
 from tornado.options import define, options
 import logging
 import os
@@ -46,7 +46,7 @@ class ChatSocketHandler(tornado.websocket.WebSocketHandler):
     def on_message(self, message):
         logging.info("got message %r", message)
         userCode = json.loads(message)
-        graph = astap.astParser(userCode)
+        graph = pyastthing.astParser(userCode)
         graphimage = graph.vizdot()
         [connection.write_message(graphimage) for connection in self.connections]
 
