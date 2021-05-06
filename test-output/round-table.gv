@@ -1,0 +1,73 @@
+digraph {
+	Module [label=<<font POINT-SIZE="30">Module</font>> shape=note]
+	Assignments [label=<<font POINT-SIZE="20">Assignments</font>> shape=plain]
+	import [label=<<font POINT-SIZE="20">imports</font>> shape=plain]
+	functions [label=<<font POINT-SIZE="20">functions</font>> shape=plain]
+	Module -> Assignments
+	Module -> import
+	Module -> functions
+	re [label=re shape=tab]
+	import -> re
+	copy [label=copy shape=tab]
+	import -> copy
+	spacy [label=spacy shape=tab]
+	import -> spacy
+	startingNode [label=spacy shape=plain]
+	import -> startingNode
+	tokenizer [label=tokenizer shape=plain]
+	startingNode -> tokenizer
+	Tokenizer [label=Tokenizer shape=tab]
+	tokenizer -> Tokenizer
+	linesToMap [label=linesToMap shape=component]
+	functions -> linesToMap
+	"linesToMap - file" [label=file shape=tab]
+	linesToMap -> "linesToMap - file"
+	"linesToMap - file" -> open
+	"linesToMap - lines" [label=lines shape=tab]
+	linesToMap -> "linesToMap - lines"
+	"linesToMap - lines" -> file
+	file -> readlines
+	"linesToMap - commentExists" [label=commentExists shape=tab]
+	linesToMap -> "linesToMap - commentExists"
+	"linesToMap - commentExists" -> isComment
+	findObj [label=findObj shape=component]
+	functions -> findObj
+	"findObj - value" [label=value shape=tab]
+	findObj -> "findObj - value"
+	"findObj - value" -> value
+	value -> split
+	"findObj - item" [label=item shape=tab]
+	findObj -> "findObj - item"
+	"findObj - anotheritem" [label=anotheritem shape=tab]
+	findObj -> "findObj - anotheritem"
+	"findObj - anotheritem" -> item
+	item -> split
+	"findObj - yetanotheritem" [label=yetanotheritem shape=tab]
+	findObj -> "findObj - yetanotheritem"
+	getIndentation [label=getIndentation shape=component]
+	functions -> getIndentation
+	isNewLine [label=isNewLine shape=component]
+	functions -> isNewLine
+	enumerateFunction [label=enumerateFunction shape=component]
+	functions -> enumerateFunction
+	lineSpacing [label=lineSpacing shape=component]
+	functions -> lineSpacing
+	isSymbol [label=isSymbol shape=component]
+	functions -> isSymbol
+	"isSymbol - symbols" [label=symbols shape=tab]
+	isSymbol -> "isSymbol - symbols"
+	"isSymbol - comments" [label=comments shape=tab]
+	isSymbol -> "isSymbol - comments"
+	isComment [label=isComment shape=component]
+	functions -> isComment
+	"isComment - symbols" [label=symbols shape=tab]
+	isComment -> "isComment - symbols"
+	"Assignments - linesToMap" [label=linesToMap shape=tab]
+	Assignments -> "Assignments - linesToMap"
+	"Assignments - linesToMap" -> linesToMap
+	"Assignments - lengthOfFile" [label=lengthOfFile shape=tab]
+	Assignments -> "Assignments - lengthOfFile"
+	Module -> import
+	Module -> functions
+	Module -> Assignments
+}

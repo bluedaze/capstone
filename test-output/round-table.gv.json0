@@ -1,0 +1,65 @@
+{
+  "name": "%3",
+  "directed": true,
+  "strict": false,
+  "bb": "0,0,272.5,99",
+  "_subgraph_cnt": 0,
+  "objects": [
+    {
+      "_gvid": 0,
+      "name": "Module",
+      "height": "0.56944",
+      "label": "<font POINT-SIZE=\"30\">Module<\/font>",
+      "pos": "151,78.5",
+      "shape": "note",
+      "width": "1.5278"
+    },
+    {
+      "_gvid": 1,
+      "name": "Assignments",
+      "height": "0.30556",
+      "label": "<font POINT-SIZE=\"20\">Assignments<\/font>",
+      "pos": "51,11",
+      "shape": "plain",
+      "width": "1.4167"
+    },
+    {
+      "_gvid": 2,
+      "name": "import",
+      "height": "0.30556",
+      "label": "<font POINT-SIZE=\"20\">imports<\/font>",
+      "pos": "151,11",
+      "shape": "plain",
+      "width": "0.84722"
+    },
+    {
+      "_gvid": 3,
+      "name": "functions",
+      "height": "0.30556",
+      "label": "<font POINT-SIZE=\"20\">functions<\/font>",
+      "pos": "236,11",
+      "shape": "plain",
+      "width": "1.0139"
+    }
+  ],
+  "edges": [
+    {
+      "_gvid": 0,
+      "tail": 0,
+      "head": 1,
+      "pos": "e,66.481,22.14 121,57.848 106.27,48.203 88.778,36.745 74.963,27.696"
+    },
+    {
+      "_gvid": 1,
+      "tail": 0,
+      "head": 2,
+      "pos": "e,151,22.14 151,57.848 151,49.765 151,40.408 151,32.262"
+    },
+    {
+      "_gvid": 2,
+      "tail": 0,
+      "head": 3,
+      "pos": "e,222.84,22.14 176.5,57.848 188.66,48.479 203.04,37.398 214.62,28.477"
+    }
+  ]
+}

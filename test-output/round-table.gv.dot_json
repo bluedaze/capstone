@@ -1,0 +1,49 @@
+{
+  "name": "%3",
+  "directed": true,
+  "strict": false,
+  "_subgraph_cnt": 0,
+  "objects": [
+    {
+      "_gvid": 0,
+      "name": "Module",
+      "label": "<font POINT-SIZE=\"30\">Module<\/font>",
+      "shape": "note"
+    },
+    {
+      "_gvid": 1,
+      "name": "Assignments",
+      "label": "<font POINT-SIZE=\"20\">Assignments<\/font>",
+      "shape": "plain"
+    },
+    {
+      "_gvid": 2,
+      "name": "import",
+      "label": "<font POINT-SIZE=\"20\">imports<\/font>",
+      "shape": "plain"
+    },
+    {
+      "_gvid": 3,
+      "name": "functions",
+      "label": "<font POINT-SIZE=\"20\">functions<\/font>",
+      "shape": "plain"
+    }
+  ],
+  "edges": [
+    {
+      "_gvid": 0,
+      "tail": 0,
+      "head": 1
+    },
+    {
+      "_gvid": 1,
+      "tail": 0,
+      "head": 2
+    },
+    {
+      "_gvid": 2,
+      "tail": 0,
+      "head": 3
+    }
+  ]
+}
