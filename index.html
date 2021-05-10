@@ -15,7 +15,8 @@
   <div class="row"  style="padding-top: 10px;">
     <div class="col-md-8">
         <form onsubmit="return sendMessage()">
-          <textarea style = "resize: none; width: 100%" rows="35" id="message" spellcheck="false"></textarea>
+          <textarea style = "resize: none; width: 100%; font-size: 25px; " rows="15" id="message" autocorrect="off" autocapitalize="none" spellcheck="false"
+          wrap="off"></textarea>
     </div>
     <div class="col-md-4">
         <img id = "graphimg" src="{{ static_url('round-table.gv.webp') }}" />
@@ -29,6 +30,7 @@
         </div>
     </div>
 </div>
+
 
     <script>
     var ws = new WebSocket("ws://localhost:8888/websocket");

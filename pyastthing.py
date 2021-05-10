@@ -18,6 +18,7 @@ from _ast import AST
 import ast
 import json
 from graphviz import Digraph
+from graphviz import Graph
 import copy
 import uuid
 # import elseScope
@@ -101,7 +102,7 @@ class astParser:
                 ct.Child.edge("cluster_Module", f"{value} {ct.mask}", style="invis")
 
     def chartImport(self, ct, value):
-        imported = Digraph(name=f'cluster {ct.mask} {value} import')
+        imported = Graph(name=f'cluster {ct.mask} {value} import')
         imported.attr(label=f'Import', fillcolor='white', style='filled, bold', fontcolor='black', fontsize="16", concentrate="true")
         imported.node(f"{value} {ct.mask}", f"{value}", shape="tab", color='lightseagreen', style="filled")
         return imported
@@ -135,103 +136,122 @@ class astParser:
             ct.mask = f"{line.name} cluster"
 
     def chartFunction(self, ct):
-        function = Digraph(name=f'cluster_{ct.lineName}')
-        function.attr(label=f'{ct.mask}', fillcolor='lightsteelblue', style='filled, bold', fontcolor='black', fontsize="22")
-        function.node(f"{ct.lineName} pointer", width="0", height="0", shape="point")
-        exitNode = f"{ct.lineName} exit"
-        function.node(exitNode, width="0", height="0", shape="point")
+        function = Graph(name=f'cluster_{ct.lineName}')
+        function.attr(label=f'{ct.mask}', fillcolor='lightsteelblue', style='filled, bold', fontcolor='black', fontsize="22", concentrate="true")
         return function
 
     def chartArguments(self, ct, line):
         input = self.chartInput(ct)
         args = line["args"]["args"]
         for arg in args:
-            input.node(f"{ct.lineName} {arg['arg']}", f"{arg['arg']}", color='darksalmon', shape="note", style="filled")
-            input.edge(f"{ct.lineName} {arg['arg']}", f"{ct.lineName} pointer", style="invis")
+            if arg["arg"] == "ghostArg":
+                input.node(f"{ct.lineName} {arg['arg']}", f"{arg['arg']}", color='darksalmon', shape="note", style="invis")
+            else:
+                input.node(f"{ct.lineName} {arg['arg']}", f"{arg['arg']}", color='darksalmon', shape="note",
+                           style="filled")
         return input
 
     def chartInput(self, ct):
-        input = Digraph(name=f'cluster_{ct.mask}_args')
-        input.node(ct.lineName, ct.mask, style="invis", color='lightcoral', shape="point", width="0", height="0")
-        input.attr(label='Arguments / Input', style='filled, bold', fillcolor='white', fontsize="18", fontcolor='black')
+        input = Graph(name=f'cluster_{ct.mask}_args')
+        input.node(ct.lineName, color='lightcoral', shape="point", height="0", weight="0")
+        self.dot.edge("cluster_Module", ct.lineName, style ="invis", minlen="3")
+        input.attr(label='Arguments / Input', style='filled, bold', fillcolor='white', fontsize="18", fontcolor='black', concentrate="true")
         return input
 
     def createBoundary(self, ct):
-        bounded = Digraph(name=f"cluster_{ct.lineName}_boundary", )
-        bounded.attr(label='Function', style='filled, bold', fillcolor='lightslategray', fontsize="18", fontcolor='white')
-        bounded.edge(ct.lineName, f"{ct.lineName} pointer", style="invis")
-        bounded.node(f"{ct.mask} boundary exit", shape="point", width="0", height="0")
-        bounded.edge(f"{ct.mask} boundary exit", f"{ct.mask} exit", minlen="0", style="invis")
+        bounded = Graph(name=f"cluster_{ct.lineName}_boundary", )
+        bounded.attr(label='Function', style='filled, bold', fillcolor='lightslategray', fontsize="18", fontcolor='white', concentrate="true")
         return bounded
 
-    def mapFuncs(self, ct):
-        self.getFuncs(ct)
-        for line in ct.Module:
-            if line["Type"] == "FunctionDef":
-                self.functions.append(line["name"])
-                self.getLineMask(ct, line)
-                function = self.chartFunction(ct)
-                arguments = self.chartArguments(ct, line)
-                boundary = self.createBoundary(ct)
-                newCT = copy.deepcopy(ct)
-                newCT.Module = line["body"]
-                newCT.Parent = boundary
-                newCT.Child = function
-                newCT.Pointer = f"{ct.lineName} pointer"
-                newCT.Exit = f"{ct.lineName} exit"
-                returnGraph = self.createReturnGraph(newCT, line)
-                boundary.subgraph(returnGraph)
-                self.createCluster(newCT)
-                boundary.subgraph(function)
-                boundary.subgraph(arguments)
-                self.dot.subgraph(boundary)
+    def mapFuncs(self, ct, line):
+        self.getLineMask(ct, line)
+        line = self.createGhostNodes(line)
+        function = self.chartFunction(ct)
+        arguments = self.chartArguments(ct, line)
+        boundary = self.createBoundary(ct)
+        newCT = copy.deepcopy(ct)
+        newCT.Module = line["body"]
+        newCT.Parent = boundary
+        newCT.Child = function
+        newCT.Pointer = f"{ct.lineName} pointer"
+        newCT.Exit = f"{ct.lineName} exit"
+        returnGraph = self.createReturnGraph(newCT, line)
+        boundary.subgraph(returnGraph)
+        self.createCluster(newCT)
+        boundary.subgraph(function)
+        boundary.subgraph(arguments)
+        self.dot.subgraph(boundary)
+        ct.mask = "cluster1"
+        ct.lineName = "cluster_Module"
+
+    def createGhostNodes(self, line):
+        variables = self.getVariables(line)
+        # arguments = self.getArguments(line)
+        if len(variables) == 0:
+            ghostNode = self.getGhostNode()
+            line["body"].append(ghostNode)
+        return line
+
+    def getArguments(self,line):
+        ghostArgument = {'Type': 'arg', 'arg': 'ghostArg'}
+        argumentList = []
+        for i in line["args"]["args"]:
+            argumentList.append(i)
+        if len(argumentList) == 0:
+            argumentList.append(ghostArgument)
+            line["args"]["args"] = argumentList
+    def getVariables(self, line):
+        variables = []
+        for item in line["body"]:
+            itemType = item.get("Type")
+            if itemType == "Assign":
+                variables.append(item)
+        return variables
+
+    def getGhostNode(self):
+        ghostNode = {'Type': 'Assign', 'targets': [{'Type': 'Name', 'id': ''}],
+         'value': {'Type': 'GhostNode', 'value': 'GhostNode', 'kind': None}, 'type_comment': None}
+        return ghostNode
 
     def createReturnGraph(self, ct, line):
         clusterName = f'cluster {ct.mask} return'
-        returnGraph = Digraph(name=clusterName)
+        returnGraph = Graph(name=clusterName)
         returnGraph.attr(label=f'Return', fillcolor='cornflowerblue', style='filled, bold', fontcolor='black',
                          fontsize="16", concentrate="true")
-        returnGraph.node(f"{ct.mask} exit", label=f"Exit", shape="point", color="cornflowerblue", style="filled, rounded", width="0", height="0")
-        self.dot.edge(ct.Exit, f"{ct.mask} boundary exit", style="invis")
         lines = line.get("body")
         for item in lines:
             itemType = item.get("Type")
             if itemType == "Return":
                 self.chartReturns(ct, returnGraph, item)
+        returnGraph.node(f"{ct.mask} exit", color="cornflowerblue", style="filled, rounded", shape="point", width="0",
+                         height="0")
         return returnGraph
 
     def chartReturns(self, ct, returnGraph, item):
-            value = item.get("value")
-            valueType = value.get("Type")
-            print(valueType)
-            if valueType == "Name":
-                name = self.getName(value)
-                nodeValue = f"{name} {ct.mask} return"
-                returnGraph.node(nodeValue, label=f"{name}", shape="rect", color="cornflowerblue", style="filled, rounded")
-            if valueType == "Dict":
-                node = self.getDict(value, ct)
-                returnGraph.subgraph(node)
-
+        value = item.get("value")
+        valueType = value.get("Type")
+        if valueType == "Name":
+            name = self.getItem(value)
+            nodeValue = f"{name} {ct.mask} return"
+            returnGraph.node(nodeValue, name, shape="rect", color="linen", style="filled, rounded")
 
     def getDict(self, item, ct):
         clusterName = f'cluster {ct.mask} dict'
-        dictionary = Digraph(name=clusterName)
+        dictionary = Graph(name=clusterName)
         dictionary.attr(label=f'Dictionary', fillcolor='white', style='filled, bold', fontcolor='black',
                          fontsize="16", concentrate="true")
-        dictionary.node(f"{ct.mask} dictionary", shape="point", width="0", height="0", style="invis")
+        dictionary.node(f"{ct.mask} dictionary", shape="point")
         keys, values = self.getKeyValues(item)
         for key, value in zip(keys, values):
             keyValue = self.createKeyValue(ct, key, value)
-            # dictionary.edge(f"{key} {ct.mask}", f"{value} {ct.mask}", constraint="false")
             dictionary.subgraph(keyValue)
-            # dictionary.subgraph(dictKey)
         return dictionary
 
     def createKeyValue(self, ct, key, value):
         dictKey = self.chartKey(ct, key)
         dictValue = self.chartValue(ct, value)
-        keyValueGraph = Digraph(name=f'cluster {ct.mask} {key}{value} keyValue')
-        keyValueGraph.node(f"{ct.mask} {key}{value} keyvalue", shape="point", width="0", height="0", style="invis")
+        keyValueGraph = Graph(name=f'cluster {ct.mask} {key}{value} keyValue')
+        keyValueGraph.node(f"{ct.mask} {key}{value} keyvalue", width="0", height="0")
         keyValueGraph.attr(label='', fillcolor='white', style='filled, dashed', fontcolor='black', fontsize="16",
                  concentrate="true", color="black")
         keyValueGraph.subgraph(dictValue)
@@ -239,7 +259,7 @@ class astParser:
         return keyValueGraph
 
     def chartKey(self, ct, value):
-        key = Digraph(name=f'cluster {ct.mask} {value} key')
+        key = Graph(name=f'cluster {ct.mask} {value} key')
         key.attr(label=f'Key', fillcolor='white', style='filled, bold', fontcolor='black', fontsize="16", concentrate="true", color="dodgerblue")
         keyValue = f"{value} {ct.mask}"
         key.node(keyValue, f"{value}", shape="rect", color='plum', style="filled, rounded")
@@ -247,7 +267,7 @@ class astParser:
         return key
 
     def chartValue(self, ct, item):
-        value = Digraph(name=f'cluster {ct.mask} {item} key')
+        value = Graph(name=f'cluster {ct.mask} {item} key')
         value.attr(label=f'Value', fillcolor='white', style='filled, bold', fontcolor='black', fontsize="16", concentrate="true", color="indianred")
         keyValue = f"{item} {ct.mask}"
         value.node(keyValue, f"{item}", shape="rect", color='palevioletred', style="filled, rounded")
@@ -275,31 +295,6 @@ class astParser:
         else:
             value = None
         return value
-    def getName(self, line):
-        return line["id"]
-
-    def chartMemory(self, ct, target, value):
-        if target not in self.functions:
-            memory = Digraph(name=f'cluster {ct.mask} {target} memory')
-            memory.attr(label=f'Memory', fillcolor='white', style='filled, dashed', fontcolor='black',
-                        fontsize="16", concentrate="true", color="black")
-            nodeValue = f"{target} {ct.mask}"
-            memory.node(nodeValue, nodeValue, shape="cylinder", style="filled", color="slategray", fontcolor="white")
-            return memory
-
-    def chartPointer(self, ct, value):
-        pointer = Digraph(name=f'cluster {ct.mask} {value} pointer')
-        pointer.attr(label=f'Pointer', fillcolor='white', style='filled, bold', fontcolor='black', fontsize="16", concentrate="true", color="black")
-        pointerValue = f"{value} {ct.mask}"
-        pointer.node(pointerValue, f"{value}", shape="tab", color='lightseagreen', style="filled")
-        return pointer
-
-    def chartAssignment(self, ct, target, value):
-        assignment = Digraph(name=f'cluster {ct.mask} {target} {value} assignment')
-        assignment.attr(label=f'Variable', fillcolor='white', style='filled, bold', fontcolor='black', fontsize="16", concentrate="true", color="navyblue")
-        assignmentPointer = f"{ct.mask}{target}{value} pointer"
-        assignment.node(assignmentPointer, width="0", height="0", shape="point")
-        return assignment
 
     def getCall(self, line):
         target = line["targets"][0]["id"]
@@ -310,16 +305,13 @@ class astParser:
             value = f"{line['value']['func']['attr']}"
         return value, target
 
-    def getConstant(self, line):
-        target = line["value"]["value"]
-        value = line["targets"][0]["id"]
-        return target, value
-
     def createCluster(self, ct):
         self.getImport(ct)
-        # self.mapExpr(ct)
-        self.mapFuncs(ct)
+        self.getFuncs(ct)
         varHandler.mapAssignments(self, ct)
+        for line in ct.Module:
+            if line["Type"] == "FunctionDef":
+                self.mapFuncs(ct, line)
 
     def mapExpr(self, ct):
         for count, line in enumerate(ct.Module):
@@ -337,13 +329,13 @@ class astParser:
                 self.functions.append(line["name"])
 
     def mainLoop(self, module):
-        dot = Digraph(format="webp")
+        dot = Graph(format="webp")
         dot.attr(concentrate="true", color="lightgrey", bgcolor="grey")
         self.dot = dot
         clusterName = f"cluster_Module"
         ct = cluster1
-        c = Digraph(name='cluster1')
-        self.dot.node(clusterName, shape="polygon", style='filled, invisible', fontcolor='white',
+        c = Graph(name='cluster1')
+        self.dot.node(clusterName, shape="polygon", style='filled, invis', fontcolor='white',
                       label=f'''Module''', color='black')
         ct.name = 'cluster1'
         ct.Module = module
